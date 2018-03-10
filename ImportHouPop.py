@@ -1,5 +1,5 @@
+
 import maya.cmds as cmds
-import maya.mel as mel
 import mtoa.core as core
 import traceback
 from PySide import QtCore
@@ -21,6 +21,7 @@ class HouPopImportUi(QtGui.QDialog):
         super(HouPopImportUi, self).__init__(parent)
         self.importOpacity = False
         self.asset_path = ''
+        self.color_channel = 'baseColor'
 
     def create(self):
         '''
@@ -30,16 +31,18 @@ class HouPopImportUi(QtGui.QDialog):
         self.setWindowFlags(QtCore.Qt.Tool)
         self.create_controls()
         self.create_layout()
-        self.resize(600, 60)
+        self.resize(480, 60)
 
     def create_controls(self):
         '''
         Create the widgets for the dialog
         '''
         self.checkbox_opacity = self.create_checkbox('&Import Opacity', self.on_checkbox_toggled)
-        self.browse_button = self.create_toolbutton(self.on_button_browse)
+        self.browse_button = self.create_toolbutton('...', self.on_button_browse)
         self.push_button = self.create_pushbutton('&OK', self.on_button_pressed)
         self.line_edit = self.create_lineedit(QtCore.QDir.currentPath(), self.on_lineedit_changed)
+        self.combobox = self.create_combobox(['baseColor', 'emitColor'], self.on_combobox_activated)
+        self.label = self.create_label()
 
     def create_layout(self):
         '''
@@ -54,16 +57,31 @@ class HouPopImportUi(QtGui.QDialog):
         line_edit_layout.addWidget(self.line_edit)
         line_edit_layout.addWidget(self.browse_button)
 
+        combobox_layout = QtGui.QHBoxLayout()
+        combobox_layout.setContentsMargins(2, 2, 2, 2)
+        combobox_layout.addWidget(self.label)
+        combobox_layout.addWidget(self.combobox)
+        combobox_layout.addStretch(1)
+
+        button_layout = QtGui.QHBoxLayout()
+        button_layout.setContentsMargins(2, 2, 2, 2)
+        self.push_button.setMaximumWidth(60)
+        button_layout.addWidget(self.push_button)
+        button_layout.setAlignment(QtCore.Qt.AlignCenter)
+
         main_layout = QtGui.QVBoxLayout()
         main_layout.setContentsMargins(6, 6, 6, 6)
 
         main_layout.addLayout(check_box_layout)
         main_layout.addLayout(line_edit_layout)
-        main_layout.addWidget(self.push_button)
-
-        main_layout.addStretch()
+        main_layout.addLayout(combobox_layout)
+        main_layout.addLayout(button_layout)
 
         self.setLayout(main_layout)
+
+    def create_label(self):
+        label = QtGui.QLabel('Color Channel')
+        return label
 
     def create_pushbutton(self, text, member):
         button = QtGui.QPushButton(text)
@@ -75,9 +93,9 @@ class HouPopImportUi(QtGui.QDialog):
         checkbox.toggled.connect(member)
         return checkbox
 
-    def create_toolbutton(self, member):
+    def create_toolbutton(self, text, member):
         button = QtGui.QToolButton()
-        button.setText('...')
+        button.setText(text)
         button.clicked.connect(member)
         return button
 
@@ -86,9 +104,22 @@ class HouPopImportUi(QtGui.QDialog):
         lineedit.textChanged.connect(member)
         return lineedit
 
+    def create_combobox(self, text, member):
+        combobox = QtGui.QComboBox()
+        for t in text:
+            combobox.addItem(t)
+        combobox.setCurrentIndex(combobox.findText(self.color_channel))
+        combobox.activated.connect(member)
+        return combobox
+
     # --------------------------------------------------------------------------
     # SLOTS
     # --------------------------------------------------------------------------
+    def on_combobox_activated(self):
+        sender = self.sender()
+        current_text = sender.currentText()
+        self.color_channel = current_text
+
     def on_button_browse(self):
         filename, filter = QtGui.QFileDialog.getOpenFileName(self)
         if filename:
@@ -121,7 +152,11 @@ class HouPopImportUi(QtGui.QDialog):
         # import particle color
         core.createArnoldNode('aiUserDataColor', name=color_name)
         cmds.setAttr('{}.colorAttrName'.format(color_name), 'rgbPP', type='string')
-        cmds.connectAttr('{}.outColor'.format(color_name), '{}.baseColor'.format(surface_name))
+        if self.color_channel == 'baseColor':
+            cmds.connectAttr('{}.outColor'.format(color_name), '{}.baseColor'.format(surface_name))
+        elif self.color_channel == 'emitColor':
+            cmds.connectAttr('{}.outColor'.format(color_name), '{}.emissionColor'.format(surface_name))
+            cmds.setAttr('{}.emission'.format(surface_name), 1)
 
         # particle opacity
         if self.importOpacity:
