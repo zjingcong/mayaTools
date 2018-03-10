@@ -17,8 +17,6 @@ def maya_main_window():
 
 
 class HouPopImportUi(QtGui.QDialog):
-    test_signal = QtCore.Signal()
-
     def __init__(self, parent=maya_main_window()):
         super(HouPopImportUi, self).__init__(parent)
         self.importOpacity = False
@@ -30,18 +28,18 @@ class HouPopImportUi(QtGui.QDialog):
         '''
         self.setWindowTitle('Houdini Pop Import')
         self.setWindowFlags(QtCore.Qt.Tool)
-
         self.create_controls()
         self.create_layout()
-        self.create_connections()
+        self.resize(600, 60)
 
     def create_controls(self):
         '''
         Create the widgets for the dialog
         '''
-        self.push_button = QtGui.QPushButton('OK')
-        self.checkbox_opacity = QtGui.QCheckBox("Import Opacity")
-        self.line_edit = QtGui.QLineEdit("filename")
+        self.checkbox_opacity = self.create_checkbox('&Import Opacity', self.on_checkbox_toggled)
+        self.browse_button = self.create_toolbutton(self.on_button_browse)
+        self.push_button = self.create_pushbutton('&OK', self.on_button_pressed)
+        self.line_edit = self.create_lineedit(QtCore.QDir.currentPath(), self.on_lineedit_changed)
 
     def create_layout(self):
         '''
@@ -50,42 +48,62 @@ class HouPopImportUi(QtGui.QDialog):
         check_box_layout = QtGui.QHBoxLayout()
         check_box_layout.setContentsMargins(2, 2, 2, 2)
         check_box_layout.addWidget(self.checkbox_opacity)
-        # check_box_layout.addWidget(self.check_box_02)
+
+        line_edit_layout = QtGui.QHBoxLayout()
+        line_edit_layout.setContentsMargins(2, 2, 2, 2)
+        line_edit_layout.addWidget(self.line_edit)
+        line_edit_layout.addWidget(self.browse_button)
 
         main_layout = QtGui.QVBoxLayout()
         main_layout.setContentsMargins(6, 6, 6, 6)
 
         main_layout.addLayout(check_box_layout)
-        main_layout.addWidget(self.line_edit)
+        main_layout.addLayout(line_edit_layout)
         main_layout.addWidget(self.push_button)
+
         main_layout.addStretch()
 
         self.setLayout(main_layout)
 
-    def create_connections(self):
-        self.push_button.clicked.connect(self.on_button_pressed)
-        self.checkbox_opacity.toggled.connect(self.on_checkbox_toggled)
-        self.line_edit.textChanged.connect(self.on_text_changed)
+    def create_pushbutton(self, text, member):
+        button = QtGui.QPushButton(text)
+        button.clicked.connect(member)
+        return button
 
-    # def create_button(self, text, member):
-    #     button = QtGui.QPushButton(text)
-    #     button.clicked.connect(member)
-    #     return button
-    #
-    # def create_checkbox(self, text, member):
-    #     checkbox = QtGui.QCheckBox(text)
-    #     checkbox.toggled.connect(member)
-    #     return checkbox
-    #
-    # def create_lineedit(self, text, member):
-    #     lineedit = QtGui.QLineEdit(text)
-    #     lineedit.textChanged.connect(member)
-    #     return lineedit
+    def create_checkbox(self, text, member):
+        checkbox = QtGui.QCheckBox(text)
+        checkbox.toggled.connect(member)
+        return checkbox
+
+    def create_toolbutton(self, member):
+        button = QtGui.QToolButton()
+        button.setText('...')
+        button.clicked.connect(member)
+        return button
+
+    def create_lineedit(self, text, member):
+        lineedit = QtGui.QLineEdit(text)
+        lineedit.textChanged.connect(member)
+        return lineedit
 
     # --------------------------------------------------------------------------
     # SLOTS
     # --------------------------------------------------------------------------
+    def on_button_browse(self):
+        filename, filter = QtGui.QFileDialog.getOpenFileName(self)
+        if filename:
+            self.asset_path = filename
+            self.line_edit.setText(self.asset_path)
+
+    def on_lineedit_changed(self):
+        self.asset_path = self.line_edit.text()
+        print self.asset_path
+
     def on_button_pressed(self):
+        if self.asset_path == '':
+            self.close()
+            return
+
         asset_name = self.asset_path.split('/')[-1].split('.')[0]
         # load houdini assets
         asset = cmds.houdiniAsset(loadAsset=[self.asset_path, "Object/{}".format(asset_name)])
@@ -96,8 +114,7 @@ class HouPopImportUi(QtGui.QDialog):
         surface_name = core.createArnoldNode('aiStandardSurface', name=surface_name)
 
         # assign shader
-        cmds.select(asset)
-        cmds.hyperShade(assign='{}'.format(surface_name))
+        cmds.sets(asset, edit=True, forceElement='{}SG'.format(surface_name))
 
         # particle color
         color_name = '{}_rgbPP'.format(surface_name)
@@ -119,16 +136,14 @@ class HouPopImportUi(QtGui.QDialog):
             cmds.setAttr('{}.attribute'.format(opacity_name), 'opacityPP', type='string')
             cmds.connectAttr('{}.outTransparency'.format(opacity_name), '{}.opacity'.format(surface_name))
 
+        self.close()
+
     def on_checkbox_toggled(self):
         sender = self.sender()
         if sender.isChecked():
             self.importOpacity = True
         else:
             self.importOpacity = False
-
-    def on_text_changed(self):
-        text = self.line_edit.text()
-        self.asset_path = text
 
 
 if __name__ == "__main__":
@@ -142,7 +157,6 @@ if __name__ == "__main__":
     houpopimport_ui = HouPopImportUi()
 
     # Delete the UI if errors occur to avoid causing winEvent
-    # and event errors (in Maya 2014)
     try:
         houpopimport_ui.create()
         houpopimport_ui.show()
